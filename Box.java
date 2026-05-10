@@ -1,22 +1,20 @@
 package Assigment_3_OOP;
 
 import java.awt.*;
-import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
-import javax.imageio.ImageIO;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Box.java  — Player character + ice projectile
 //
 //  Sprite rules (req #12):
-//    • Two player PNGs: Player_1.png, Player_2.png (swapped with TAB)
+//    • Two player characters (swapped with C)
+//    • Rendered using Java Graphics shapes for performance and consistency.
 //    • Walk animation: alternate between a "step" frame by flipping the sprite
 //      vertically slightly — no extra PNGs needed, just a simple bob offset.
-//    • Jump: sprite drawn 2px higher with a slight vertical squish (scale only,
+//    • Jump: drawn 2px higher with a slight vertical squish (scale only,
 //      no horizontal stretch — width stays fixed).
-//    • Facing left: sprite mirrored horizontally (negative-width drawImage).
-//    • Placeholder cartoon character drawn if PNGs missing.
+//    • Facing left: mirrored horizontally (where applicable).
 //
 //  Ice projectile (req #13):
 //    • Fired horizontally in facing direction.
@@ -54,9 +52,8 @@ public class Box {
     // Jump squish: slight vertical scale when airborne (looks more dynamic)
     private boolean isAirborne = true;
 
-    // ── Sprites ───────────────────────────────────────────────────────────────
-    // Player_1.png and Player_2.png — swapped with TAB key
-    private BufferedImage[] sprites = new BufferedImage[2];
+    // ── Characters ────────────────────────────────────────────────────────────
+    // Swapped with C key
     int activeSprite = 0;
 
     // ── Projectiles ───────────────────────────────────────────────────────────
@@ -67,25 +64,10 @@ public class Box {
     // ─────────────────────────────────────────────────────────────────────────
     //  CONSTRUCTOR
     // ─────────────────────────────────────────────────────────────────────────
-    public Box() { loadSprites(); }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    //  SPRITE LOADING
-    // ─────────────────────────────────────────────────────────────────────────
-    private void loadSprites() {
-        // Player_1.png and Player_2.png must be in the same package resource folder
-        String[] names = { "Player_1.png", "Player_2.png" };
-        for (int i = 0; i < names.length; i++) {
-            try {
-                sprites[i] = ImageIO.read(getClass().getResourceAsStream(names[i]));
-            } catch (Exception e) {
-                sprites[i] = null; // placeholder will be drawn instead
-            }
-        }
-    }
+    public Box() { }
 
     public void setActiveSprite(int idx) {
-        if (idx >= 0 && idx < sprites.length) activeSprite = idx;
+        activeSprite = idx;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -117,14 +99,14 @@ public class Box {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  INPUT METHODS  (called from Main game loop)
+    //  INPUT & MOVEMENT
     // ─────────────────────────────────────────────────────────────────────────
-    public void moveLeft()        { vx = -9; facingRight = false; }
-    public void moveRight()       { vx =  9; facingRight = true;  }
-    public void stopHorizontal()  { vx = 0; }
-
     public void jump() {
-        if (canJump) { vy = jumpForce; canJump = false; }
+        if (canJump) { 
+            vy = jumpForce; 
+            canJump = false; 
+            isAirborne = true;
+        }
     }
 
     // Fire one ice projectile in facing direction (respects cooldown)
@@ -141,96 +123,97 @@ public class Box {
     // ─────────────────────────────────────────────────────────────────────────
     //  UPDATE  — called every game tick
     // ─────────────────────────────────────────────────────────────────────────
-    public void update() {
+    public void update(boolean leftHeld, boolean rightHeld) {
         // ── Timers ────────────────────────────────────────────────────────
         if (hitFlashTimer  > 0) hitFlashTimer--;
         if (shootCooldown  > 0) shootCooldown--;
 
+        // ── Horizontal Input ──────────────────────────────────────────────
+        if (leftHeld && !rightHeld) {
+            vx = -9;
+            facingRight = false;
+        } else if (rightHeld && !leftHeld) {
+            vx = 9;
+            facingRight = true;
+        } else {
+            vx *= friction;
+            if (Math.abs(vx) < 0.1) vx = 0;
+        }
+
         // ── Gravity ───────────────────────────────────────────────────────
         vy += gravity;
 
-        // ── Horizontal friction (when no key pressed, vx decays to ~0) ───
-        vx *= friction;
-
         // ── Walk animation tick ───────────────────────────────────────────
         boolean moving = Math.abs(vx) > 0.5;
-        if (moving && canJump) {        // only bob when on the ground
+        if (moving && canJump) {
             walkTick++;
-            if (walkTick >= 10) {       // swap "foot" every 10 ticks
+            if (walkTick >= 10) {
                 walkTick = 0;
                 stepUp = !stepUp;
             }
         } else {
             walkTick = 0;
-            stepUp   = false;           // reset bob when standing still or airborne
+            stepUp   = false;
         }
 
-        // ── Airborne state ────────────────────────────────────────────────
-        isAirborne = !canJump;
-
         // ═══════════════════════════════════════════════════════════════════
-        //  HORIZONTAL MOVEMENT + WALL COLLISION
+        //  PHYSICS & COLLISION
         // ═══════════════════════════════════════════════════════════════════
-        int nextX = x + (int) vx;
+        
+        // 1. Horizontal Move
+        x += (int) vx;
+        if (x < 0) { x = 0; vx = 0; }
+        if (x + width > screenWidth) { x = screenWidth - width; vx = 0; }
 
-        // Screen edges
-        if (nextX < 0)                       { nextX = 0;                   vx = 0; }
-        else if (nextX + width > screenWidth) { nextX = screenWidth - width; vx = 0; }
-
-        // Platform side walls
+        // Horizontal Platform Collision
         if (platforms != null) {
             for (Platform p : platforms) {
-                // Only collide horizontally if player vertically overlaps the platform
                 if (y + height > p.y && y < p.y + p.height) {
-                    // Moving right → hitting platform's left face
-                    if (vx > 0 && x + width <= p.x && nextX + width > p.x) {
-                        nextX = p.x - width; vx = 0;
-                    }
-                    // Moving left → hitting platform's right face
-                    else if (vx < 0 && x >= p.x + p.width && nextX < p.x + p.width) {
-                        nextX = p.x + p.width; vx = 0;
+                    if (vx > 0 && x + width > p.x && x < p.x) { // Hit left side
+                        x = p.x - width; vx = 0;
+                    } else if (vx < 0 && x < p.x + p.width && x + width > p.x + p.width) { // Hit right side
+                        x = p.x + p.width; vx = 0;
                     }
                 }
             }
         }
-        x = nextX;
 
-        // ═══════════════════════════════════════════════════════════════════
-        //  VERTICAL MOVEMENT + FLOOR / CEILING COLLISION
-        // ═══════════════════════════════════════════════════════════════════
-        int nextY = y + (int) vy;
+        // 2. Vertical Move
+        y += (int) vy;
         boolean onFloor = false;
 
+        // Ground check (Ground platform is at y=0 with height 30)
+        if (y <= 30) {
+            y = 30;
+            vy = 0;
+            onFloor = true;
+        }
+
+        // Platform Vertical Collision
         if (platforms != null) {
             for (Platform p : platforms) {
-                // Check horizontal overlap first
                 if (x + width > p.x && x < p.x + p.width) {
-
-                    // LAND ON TOP of platform (falling, vy <= 0)
-                    if (vy <= 0 && y >= p.y + p.height && nextY < p.y + p.height) {
-                        nextY   = p.y + p.height;
-                        vy      = 0;
+                    // Landing on top
+                    if (vy <= 0 && y >= p.y + p.height - 15 && y <= p.y + p.height) {
+                        y = p.y + p.height;
+                        vy = 0;
                         onFloor = true;
                     }
-                    // HIT CEILING from below (only for tall platforms ≥ 60px)
-                    else if (vy > 0 && y + height <= p.y && nextY + height > p.y) {
+                    // Hitting ceiling (tall platforms)
+                    else if (vy > 0 && y + height >= p.y && y + height <= p.y + 15) {
                         if (p.height >= 60) {
-                            nextY = p.y - height;
-                            vy    = 0;
+                            y = p.y - height;
+                            vy = 0;
                         }
                     }
                 }
             }
         }
 
-        // Ground floor (y = 0 in world-space = bottom of screen)
-        if (nextY < 0) { nextY = 0; vy = 0; onFloor = true; }
+        if (y > screenHeight + 300) respawn();
 
-        // Fell off bottom → respawn
-        else if (nextY > screenHeight + 300) respawn();
-
-        y       = nextY;
         canJump = onFloor;
+        isAirborne = !onFloor;
 
         // ── Update projectiles ────────────────────────────────────────────
         projectiles.removeIf(pr -> !pr.active);
@@ -245,8 +228,6 @@ public class Box {
         for (Projectile pr : projectiles) pr.draw(g);
 
         Graphics2D g2 = (Graphics2D) g;
-        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-                            RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                             RenderingHints.VALUE_ANTIALIAS_ON);
 
@@ -259,31 +240,14 @@ public class Box {
         if (hitFlashTimer > 0 && (hitFlashTimer / 4) % 2 == 0)
             g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.35f));
 
-        BufferedImage img = sprites[activeSprite];
-        if (img != null) {
-            // Jump squish: when airborne, draw sprite 4px taller and 4px narrower
-            // to give a "stretched upward" feel — width stays within collision box.
-            int drawW = isAirborne ? width  - 4 : width;
-            int drawH = isAirborne ? height + 4 : height;
-            int drawX = x + (width - drawW) / 2; // keep centred horizontally
-
-            if (facingRight) {
-                // Normal orientation
-                g2.drawImage(img, drawX, drawY, drawW, drawH, null);
-            } else {
-                // Mirror horizontally: start at right edge, draw with negative width
-                g2.drawImage(img, drawX + drawW, drawY, -drawW, drawH, null);
-            }
-        } else {
-            // Fallback placeholder (cartoon character drawn with basic shapes)
-            drawPlaceholder(g2, drawY);
-        }
+        // Draw player character using basic shapes
+        drawPlaceholder(g2, drawY);
 
         // Restore full opacity
         g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f));
     }
 
-    // Simple cartoon placeholder used when Player PNG is missing
+    // Simple cartoon placeholder
     private void drawPlaceholder(Graphics2D g, int drawY) {
         // Hat / hair
         g.setColor(activeSprite == 0 ? new Color(180, 30, 30) : new Color(30, 130, 30));
