@@ -28,7 +28,7 @@ import java.util.Set;
 public class Main extends JPanel implements ActionListener {
 
     // ── Screen states ─────────────────────────────────────────────────────────
-    private enum Screen { SPLASH, WORLD_SELECT, LEVEL_SELECT, PLAYING, DEAD }
+    private enum Screen { SPLASH, WORLD_SELECT, LEVEL_SELECT, PLAYING, PAUSED, DEAD, WORLD_CLEARED }
     private Screen screen = Screen.SPLASH;
 
     // ── World metadata ────────────────────────────────────────────────────────
@@ -40,10 +40,10 @@ public class Main extends JPanel implements ActionListener {
         "Background_4.png"    // world 3 – volcano (embers)
     };
     private static final Color[] WORLD_TINT = {
-        new Color(10,  20,  60,  160),
-        new Color(80,  40,   0,  160),
-        new Color(0,   50,  10,  160),
-        new Color(80,  10,   0,  160)
+        new Color(60,  100, 220, 160), // Light blue
+        new Color(220, 160,  60, 160), // Light orange/sand
+        new Color(60,  180,  80, 160), // Light green
+        new Color(220,  70,  50, 160)  // Light red
     };
     private static final Color[] WORLD_ACCENT = {
         new Color(80,  130, 255),
@@ -67,6 +67,7 @@ public class Main extends JPanel implements ActionListener {
     // ── Resources ─────────────────────────────────────────────────────────────
     private Image[] bgImages = new Image[4];
     private Image   activeBg;
+    private Image   splashBg;
 
     // ── Game objects ──────────────────────────────────────────────────────────
     Box            box       = new Box();
@@ -82,8 +83,7 @@ public class Main extends JPanel implements ActionListener {
 
     // ── Boss state ────────────────────────────────────────────────────────────
     // Boss jumps between platforms after BOSS_JUMP_INTERVAL ticks.
-    // Desert/Forest boss alternates between lowest-middle and top platform.
-    // City/Volcano boss jumps to an isolated corner platform.
+    private int  bossSpawnPlatformIndex = 0;
     private int  bossJumpTimer     = 0;
     private static final int BOSS_JUMP_INTERVAL = 300; // ~5 sec at 60fps
 
@@ -160,35 +160,19 @@ public class Main extends JPanel implements ActionListener {
         if (type == KeyEvent.KEY_RELEASED) pressedKeys.remove(key);
 
         // Immediate movement response on press/release to reduce perceived input lag.
-        if (screen == Screen.PLAYING) {
-            if (type == KeyEvent.KEY_PRESSED) {
-                if (playerHp > 0) {
-                    if (key == KeyEvent.VK_LEFT)  box.moveLeft();
-                    if (key == KeyEvent.VK_RIGHT) box.moveRight();
-                }
-                if (player2Hp > 0) {
-                    if (key == KeyEvent.VK_A) box2.moveLeft();
-                    if (key == KeyEvent.VK_D) box2.moveRight();
-                }
-            } else if (type == KeyEvent.KEY_RELEASED) {
-                if (playerHp > 0 && (key == KeyEvent.VK_LEFT || key == KeyEvent.VK_RIGHT)) {
-                    if      (isP1Left()  && !isP1Right()) box.moveLeft();
-                    else if (isP1Right() && !isP1Left())  box.moveRight();
-                    else                                   box.stopHorizontal();
-                }
-                if (player2Hp > 0 && (key == KeyEvent.VK_A || key == KeyEvent.VK_D)) {
-                    if      (isP2Left()  && !isP2Right()) box2.moveLeft();
-                    else if (isP2Right() && !isP2Left())  box2.moveRight();
-                    else                                   box2.stopHorizontal();
-                }
-            }
-        }
+        // (Now handled entirely within box.update based on key state)
 
         if (type != KeyEvent.KEY_PRESSED)  return;
 
-        // ESC: back to menu
+        // ESC: back to menu or pause
         if (key == KeyEvent.VK_ESCAPE) {
-            if (screen == Screen.PLAYING || screen == Screen.DEAD) {
+            if (screen == Screen.PLAYING) {
+                screen = Screen.PAUSED; repaint(); return;
+            }
+            if (screen == Screen.PAUSED) {
+                screen = Screen.PLAYING; repaint(); return;
+            }
+            if (screen == Screen.DEAD) {
                 screen = Screen.WORLD_SELECT; repaint(); return;
             }
             if (screen == Screen.LEVEL_SELECT) {
@@ -205,18 +189,22 @@ public class Main extends JPanel implements ActionListener {
             return;
         }
 
+        if (screen == Screen.WORLD_CLEARED) {
+            screen = Screen.WORLD_SELECT; repaint(); return;
+        }
+
         if (screen != Screen.PLAYING) return;
 
         // Jump fires immediately on keypress (no OS repeat lag)
-        if ((key == KeyEvent.VK_SPACE || key == KeyEvent.VK_UP) && playerHp > 0) box.jump(); // P1
+        if (key == KeyEvent.VK_UP && playerHp > 0) box.jump(); // P1
         if (key == KeyEvent.VK_W && player2Hp > 0) box2.jump();                                // P2
 
         // Shoot ice
-        if (key == KeyEvent.VK_Z && playerHp > 0) box.shoot();   // P1
-        if (key == KeyEvent.VK_F && player2Hp > 0) box2.shoot(); // P2
+        if (key == KeyEvent.VK_SPACE && playerHp > 0) box.shoot();   // P1
+        if (key == KeyEvent.VK_TAB && player2Hp > 0) box2.shoot(); // P2
 
         // Character swap
-        if (key == KeyEvent.VK_TAB)
+        if (key == KeyEvent.VK_C)
             box.setActiveSprite((box.activeSprite + 1) % 2);
 
         // Numeric level jump: type digits then ENTER
@@ -248,6 +236,8 @@ public class Main extends JPanel implements ActionListener {
             try { bgImages[i] = new ImageIcon(getClass().getResource(WORLD_BG_FILES[i])).getImage(); }
             catch (Exception ex) { bgImages[i] = null; }
         }
+        try { splashBg = new ImageIcon(getClass().getResource("Main_Window.png")).getImage(); }
+        catch (Exception ex) { splashBg = null; }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -532,9 +522,13 @@ public class Main extends JPanel implements ActionListener {
         final double enemyYOffset = 5.0;
 
         for (int i = 0; i < count; i++) {
-            double ex = spawns[i][0] - 34; // Center enemy (width 68) on spawn X
-            double ey = spawns[i][1] - enemyYOffset;
             Enemy.Type etype = types[i];
+            boolean isBoss = (etype == Enemy.Type.BOSS_CITY || etype == Enemy.Type.BOSS_DESERT
+                           || etype == Enemy.Type.BOSS_FOREST || etype == Enemy.Type.BOSS_VOLCANO);
+            
+            double eWidth = isBoss ? ((etype == Enemy.Type.BOSS_DESERT || etype == Enemy.Type.BOSS_FOREST) ? 100 : 346) : 68;
+            double ex = spawns[i][0] - (eWidth / 2.0); // Center enemy on spawn X
+            double ey = spawns[i][1] - enemyYOffset;
 
             // ── Determine Bounds ──────────────────────────────────────────
             double lb, rb;
@@ -594,8 +588,6 @@ public class Main extends JPanel implements ActionListener {
                           ? 0.4 : speed;
 
             Enemy enemy = new Enemy(ex, ey, lb, rb, eSpeed, sh, etype);
-            boolean isBoss = (etype == Enemy.Type.BOSS_CITY || etype == Enemy.Type.BOSS_DESERT
-                           || etype == Enemy.Type.BOSS_FOREST || etype == Enemy.Type.BOSS_VOLCANO);
             if (!isBoss) {
                 // Left-side platforms start moving right first; right-side platforms move left first.
                 double platformCenter = (myPlatform != null) ? (myPlatform.x + myPlatform.width / 2.0)
@@ -630,25 +622,25 @@ public class Main extends JPanel implements ActionListener {
         int sw = getWidth(), sh = getHeight();
         double newX, newY;
         switch (currentLevel) {
-            case 17: // City – isolated thick platform right (sx-350,325,350,70)
+            case 17: // City – isolated thick platform right (sx-350,375,350,70)
                 if (boss.x > sw / 2.0) {
                     newX = 20;  newY = 250 + boss.height + 5;  // FLOOR 2 left
                 } else {
-                    newX = sw - 350 + 40;  newY = 325 + 70 + 5; // isolated right
+                    newX = sw - 350 + 40;  newY = 375 + 70; // isolated right top
                 }
                 break;
             case 20: // Volcano – isolated thick platform left (0,325,350,70)
                 if (boss.x < sw / 2.0) {
                     newX = sw - 700;  newY = 420 + boss.height + 5; // FLOOR 4 right
                 } else {
-                    newX = 20;  newY = 325 + 70 + 5; // isolated left
+                    newX = 20;  newY = 325 + 70; // isolated left top
                 }
                 break;
             case 18: // Desert – base platform ↔ top platform
                 if (boss.y < sh * 0.55) {
-                    // currently high → drop to wide base (y=0 platform top=40)
+                    // currently high → drop to wide base (y=0 platform top=30)
                     newX = sw / 2.0 - boss.width / 2.0;
-                    newY = 40 + boss.height + 5;
+                    newY = 30 + boss.height + 5;
                 } else {
                     // jump to top platform (sw/4, y=550, h=30)
                     newX = sw / 2.0 - boss.width / 2.0;
@@ -673,15 +665,16 @@ public class Main extends JPanel implements ActionListener {
 
     private void placeCityBossBottom(Enemy boss, int sw) {
         boss.x = sw - boss.width - 20;
-        boss.y = -5;
+        boss.y = 0; // On ground platform
         boss.speed = 0;
         boss.leftBound = boss.x;
         boss.rightBound = boss.x + boss.width;
     }
 
     private void placeCityBossUpper(Enemy boss, int sw) {
+        // Isolated thick platform right (sx-350,375,350,70). Top = 375+70=445.
         boss.x = (sw - 350) + (350 - boss.width) / 2.0;
-        boss.y = 375 + 30;
+        boss.y = 405;
         boss.speed = 0;
         boss.leftBound = boss.x;
         boss.rightBound = boss.x + boss.width;
@@ -689,16 +682,16 @@ public class Main extends JPanel implements ActionListener {
 
     private void placeVolcanoBossBottomLeft(Enemy boss) {
         boss.x = 0;
-        boss.y = -5;
+        boss.y = 0; // On ground platform
         boss.speed = 0;
         boss.leftBound = boss.x;
         boss.rightBound = boss.x + boss.width;
     }
 
     private void placeVolcanoBossUpper(Enemy boss) {
-        // Isolated left thick platform in level 20: (0,325,350,70)
+        // Isolated left thick platform in level 20: (0,325,350,70). Top = 325+70=395.
         boss.x = (350 - boss.width) / 2.0;
-        boss.y = 325 + 30;
+        boss.y = 345;
         boss.speed = 0;
         boss.leftBound = boss.x;
         boss.rightBound = boss.x + boss.width;
@@ -706,7 +699,7 @@ public class Main extends JPanel implements ActionListener {
 
     private void fireCityBossRadial(Enemy boss, int projectileCount) {
         double cx = boss.x + boss.width / 2.0;
-        double cy = boss.y + boss.height / 2.0;
+        double cy = boss.y + 140; // Lowered to player height
         double shotSpeed = 5.5;
         for (int i = 0; i < projectileCount; i++) {
             double angle = (Math.PI * 2 * i) / projectileCount;
@@ -738,6 +731,7 @@ public class Main extends JPanel implements ActionListener {
         Platform.currentWorld = worldIdx;
         activeBg              = bgImages[worldIdx];
         screen                = Screen.PLAYING;
+        bossSpawnPlatformIndex = 0;
         playerHp              = PLAYER_MAX_HP;   // reset player HP on new level
         player2Hp             = PLAYER_MAX_HP;
         bossJumpTimer         = 0;               // reset boss jump clock
@@ -762,12 +756,27 @@ public class Main extends JPanel implements ActionListener {
         box2.setScreenDimensions(sw, sh);
         box.setPlatforms(platforms);
         box2.setPlatforms(platforms);
-        box.x = sw / 2 - 80;
-        box2.x = sw / 2 + 80;
-        box.y = sh / 2;
-        box2.y = sh / 2;
-        box.setSpawn(sw / 2 - 80, sh / 2);
-        box2.setSpawn(sw / 2 + 80, sh / 2);
+        double sx1 = sw / 2.0 - 80, sx2 = sw / 2.0 + 80, sy = 30;
+        if (currentLevel <= 16) {
+            double[][] enemySpawns = LevelLayouts.getEnemySpawns(currentLevel, sw, sh);
+            Platform bestP = null;
+            for (Platform p : platforms) {
+                if (p.y <= 30) continue; // prefer elevated platforms
+                boolean hasEnemy = false;
+                for (double[] s : enemySpawns) {
+                    if (s[0] >= p.x - 20 && s[0] <= p.x + p.width + 20 && Math.abs(s[1] - (p.y + p.height)) < 70) {
+                        hasEnemy = true; break;
+                    }
+                }
+                if (!hasEnemy && (bestP == null || p.width > bestP.width)) bestP = p;
+            }
+            if (bestP != null) {
+                double offset = Math.min(40, bestP.width / 4.0);
+                sx1 = bestP.x + bestP.width / 2.0 - offset; sx2 = bestP.x + bestP.width / 2.0 + offset; sy = bestP.y + bestP.height;
+            }
+        }
+        box.x = (int)sx1; box2.x = (int)sx2; box.y = (int)sy; box2.y = (int)sy;
+        box.setSpawn((int)sx1, (int)sy); box2.setSpawn((int)sx2, (int)sy);
         box.vy = 0;
         box2.vy = 0;
         box.canJump = false;
@@ -795,7 +804,7 @@ public class Main extends JPanel implements ActionListener {
     //  GAME LOOP  (~62 fps via Swing Timer)
     // ─────────────────────────────────────────────────────────────────────────
     @Override public void actionPerformed(ActionEvent e) {
-        if (screen == Screen.DEAD) { repaint(); return; }
+        if (screen == Screen.DEAD || screen == Screen.PAUSED) { repaint(); return; }
         if (screen != Screen.PLAYING) { repaint(); return; }
 
         int W = getWidth(), H = getHeight();
@@ -805,14 +814,15 @@ public class Main extends JPanel implements ActionListener {
         if (levelCompleteTimer > 0) {
             levelCompleteTimer--;
             if (levelCompleteTimer == 0) {
-                // Advance to the next level in this world, or back to world select
-                int nextLvl = currentLevel + 1;
-                boolean found = false;
-                for (int[] row : WORLD_LEVELS)
-                    for (int lv : row)
-                        if (lv == nextLvl) { found = true; break; }
-                if (found) launchLevel(nextLvl);
-                else { screen = Screen.WORLD_SELECT; repaint(); }
+                int w = worldOfLevel(currentLevel), idx = -1;
+                for (int i = 0; i < WORLD_LEVELS[w].length; i++) {
+                    if (WORLD_LEVELS[w][i] == currentLevel) { idx = i; break; }
+                }
+                if (idx != -1 && idx < WORLD_LEVELS[w].length - 1) {
+                    launchLevel(WORLD_LEVELS[w][idx + 1]);
+                } else {
+                    screen = Screen.WORLD_CLEARED; repaint();
+                }
             }
             repaint();
             return;
@@ -824,21 +834,11 @@ public class Main extends JPanel implements ActionListener {
 
         // ── Apply movement from held keys ─────────────────────────────────
         if (playerHp > 0) {
-            if      (isP1Left()  && !isP1Right()) box.moveLeft();
-            else if (isP1Right() && !isP1Left())  box.moveRight();
-            else                                  box.stopHorizontal();
-            box.update();
-        } else {
-            box.stopHorizontal();
+            box.update(isP1Left(), isP1Right());
         }
 
         if (player2Hp > 0) {
-            if      (isP2Left()  && !isP2Right()) box2.moveLeft();
-            else if (isP2Right() && !isP2Left())  box2.moveRight();
-            else                                  box2.stopHorizontal();
-            box2.update();
-        } else {
-            box2.stopHorizontal();
+            box2.update(isP2Left(), isP2Right());
         }
 
         // ── Update background particles ───────────────────────────────────
@@ -847,9 +847,22 @@ public class Main extends JPanel implements ActionListener {
         // ── Boss AI: jump + mini-enemy spawning ───────────────────────────
         if (isBossLevel(currentLevel) && !enemies.isEmpty()) {
             Enemy boss = enemies.get(0); // boss is always first in list
-            if (boss.alive) {
+            if (boss.alive && boss.isBoss()) { // Ensure it's actually the boss
                 if (currentLevel == 17) {
-                    // City boss: 4s radial fire (12 dirs), 5s mini spawn, 10s bottom↔upper jump cycle.
+                    // City boss: 10s bottom↔upper jump cycle, 4s radial fire, 5s mini spawn.
+                    bossJumpTimer++;
+                    if (bossJumpTimer >= CITY_BOSS_JUMP_INTERVAL) {
+                        bossJumpTimer = 0;
+                        cityBossAtUpper = !cityBossAtUpper;
+                        if (cityBossAtUpper) placeCityBossUpper(boss, W);
+                        else                 placeCityBossBottom(boss, W);
+                        
+                        // Clear old projectiles and fire IMMEDIATELY on jump
+                        boss.projectiles.clear();
+                        fireCityBossRadial(boss, 12);
+                        bossShootTimer = 0; 
+                    }
+
                     bossShootTimer++;
                     if (bossShootTimer >= CITY_BOSS_SHOOT_INTERVAL) {
                         bossShootTimer = 0;
@@ -860,34 +873,25 @@ public class Main extends JPanel implements ActionListener {
                     if (bossMiniSpawnTimer >= CITY_BOSS_MINI_INTERVAL) {
                         bossMiniSpawnTimer = 0;
                         Enemy.Type miniType = bossMiniType(currentLevel);
-                        Platform spawnPlatform = null;
-                        if (!platforms.isEmpty()) {
-                            java.util.List<Platform> candidates = new java.util.ArrayList<>();
-                            for (Platform p : platforms) if (p.width >= 80) candidates.add(p);
-                            if (!candidates.isEmpty())
-                                spawnPlatform = candidates.get((int)(Math.random() * candidates.size()));
-                        }
-                        double mX, mY, lb, rb;
-                        if (spawnPlatform != null) {
-                            mX = spawnPlatform.x + spawnPlatform.width / 2.0;
-                            mY = spawnPlatform.y + spawnPlatform.height - 10;
-                            lb = spawnPlatform.x + 5;
-                            rb = spawnPlatform.x + spawnPlatform.width - 5;
-                        } else {
-                            mX  = boss.x + boss.width / 2.0;
-                            mY  = boss.y + boss.height - 5;
-                            lb  = Math.max(0, mX - 100);
-                            rb  = Math.min(W, mX + 100);
-                        }
-                        enemies.add(new Enemy(mX, mY, lb, rb, 1.8, H, miniType));
-                    }
 
-                    bossJumpTimer++;
-                    if (bossJumpTimer >= CITY_BOSS_JUMP_INTERVAL) {
-                        bossJumpTimer = 0;
-                        cityBossAtUpper = !cityBossAtUpper;
-                        if (cityBossAtUpper) placeCityBossUpper(boss, W);
-                        else                 placeCityBossBottom(boss, W);
+                        // Filter valid platforms (exclude ground and isolated boss platform)
+                        java.util.List<Platform> validPlatforms = new java.util.ArrayList<>();
+                        for (Platform p : platforms) {
+                            if (p.y <= 30) continue; // skip ground
+                            // Level 17 isolated thick platform on right (+50): (sx - 350, 375, 350, 70)
+                            if (p.x > W - 400 && p.y > 300) continue;
+                            if (p.width >= 80) validPlatforms.add(p);
+                        }
+
+                        if (!validPlatforms.isEmpty()) {
+                            bossSpawnPlatformIndex %= validPlatforms.size();
+                            Platform p = validPlatforms.get(bossSpawnPlatformIndex++);
+                            double mX = p.x + p.width / 2.0;
+                            double mY = p.y + p.height - 10;
+                            double lb = p.x + 5;
+                            double rb = p.x + p.width - 5;
+                            enemies.add(new Enemy(mX, mY, lb, rb, 1.8, H, miniType));
+                        }
                     }
                 } else if (currentLevel == 20) {
                     // Volcano jump cycle: bottom-left -> upper isolated platform every 10 seconds.
@@ -897,6 +901,11 @@ public class Main extends JPanel implements ActionListener {
                         volcanoBossAtUpper = !volcanoBossAtUpper;
                         if (volcanoBossAtUpper) placeVolcanoBossUpper(boss);
                         else                    placeVolcanoBossBottomLeft(boss);
+                        
+                        // Clear old projectiles and fire IMMEDIATELY on jump
+                        boss.projectiles.clear();
+                        fireVolcanoBossMouthRadial(boss, 15);
+                        bossShootTimer = 0; 
                     }
 
                     // Volcano boss: radial fire from mouth every 2.5s, red balls, 15 directions.
@@ -911,26 +920,24 @@ public class Main extends JPanel implements ActionListener {
                     if (bossMiniSpawnTimer >= BOSS_MINI_INTERVAL) {
                         bossMiniSpawnTimer = 0;
                         Enemy.Type miniType = bossMiniType(currentLevel);
-                        Platform spawnPlatform = null;
-                        if (!platforms.isEmpty()) {
-                            java.util.List<Platform> candidates = new java.util.ArrayList<>();
-                            for (Platform p : platforms) if (p.width >= 80) candidates.add(p);
-                            if (!candidates.isEmpty())
-                                spawnPlatform = candidates.get((int)(Math.random() * candidates.size()));
+
+                        java.util.List<Platform> validPlatforms = new java.util.ArrayList<>();
+                        for (Platform p : platforms) {
+                            if (p.y <= 30) continue; // skip ground
+                            // Level 20 isolated thick platform on left (+50): (0, 325, 350, 70)
+                            if (p.x < 400 && p.y > 300) continue;
+                            if (p.width >= 80) validPlatforms.add(p);
                         }
-                        double mX, mY, lb, rb;
-                        if (spawnPlatform != null) {
-                            mX = spawnPlatform.x + spawnPlatform.width / 2.0;
-                            mY = spawnPlatform.y + spawnPlatform.height - 10;
-                            lb = spawnPlatform.x + 5;
-                            rb = spawnPlatform.x + spawnPlatform.width - 5;
-                        } else {
-                            mX  = boss.x + boss.width / 2.0;
-                            mY  = boss.y + boss.height - 5;
-                            lb  = Math.max(0, mX - 100);
-                            rb  = Math.min(W, mX + 100);
+
+                        if (!validPlatforms.isEmpty()) {
+                            bossSpawnPlatformIndex %= validPlatforms.size();
+                            Platform p = validPlatforms.get(bossSpawnPlatformIndex++);
+                            double mX = p.x + p.width / 2.0;
+                            double mY = p.y + p.height - 10;
+                            double lb = p.x + 5;
+                            double rb = p.x + p.width - 5;
+                            enemies.add(new Enemy(mX, mY, lb, rb, 1.6, H, miniType));
                         }
-                        enemies.add(new Enemy(mX, mY, lb, rb, 1.6, H, miniType));
                     }
                 } else {
                     // Other bosses jump behavior
@@ -946,27 +953,23 @@ public class Main extends JPanel implements ActionListener {
                     if (bossMiniSpawnTimer >= BOSS_MINI_INTERVAL) {
                         bossMiniSpawnTimer = 0;
                         Enemy.Type miniType = bossMiniType(currentLevel);
-                        Platform spawnPlatform = null;
-                        if (!platforms.isEmpty()) {
-                            java.util.List<Platform> candidates = new java.util.ArrayList<>();
-                            for (Platform p : platforms) if (p.width >= 80) candidates.add(p);
-                            if (!candidates.isEmpty())
-                                spawnPlatform = candidates.get((int)(Math.random() * candidates.size()));
+
+                        java.util.List<Platform> validPlatforms = new java.util.ArrayList<>();
+                        for (Platform p : platforms) {
+                            if (p.y <= 30) continue; // skip ground
+                            if (p.width >= 80) validPlatforms.add(p);
                         }
-                        double mX, mY, lb, rb;
-                        if (spawnPlatform != null) {
-                            mX = spawnPlatform.x + spawnPlatform.width / 2.0;
-                            mY = spawnPlatform.y + spawnPlatform.height - 10;
-                            lb = spawnPlatform.x + 5;
-                            rb = spawnPlatform.x + spawnPlatform.width - 5;
-                        } else {
-                            mX  = boss.x + boss.width / 2.0;
-                            mY  = boss.y + boss.height - 5;
-                            lb  = Math.max(0, mX - 100);
-                            rb  = Math.min(W, mX + 100);
+
+                        if (!validPlatforms.isEmpty()) {
+                            bossSpawnPlatformIndex %= validPlatforms.size();
+                            Platform p = validPlatforms.get(bossSpawnPlatformIndex++);
+                            double mX = p.x + p.width / 2.0;
+                            double mY = p.y + p.height - 10;
+                            double lb = p.x + 5;
+                            double rb = p.x + p.width - 5;
+                            double miniSpeed = (currentLevel == 20) ? 1.6 : 1.8;
+                            enemies.add(new Enemy(mX, mY, lb, rb, miniSpeed, H, miniType));
                         }
-                        double miniSpeed = (currentLevel == 20) ? 1.6 : 1.8;
-                        enemies.add(new Enemy(mX, mY, lb, rb, miniSpeed, H, miniType));
                     }
                 }
             }
@@ -1089,7 +1092,16 @@ public class Main extends JPanel implements ActionListener {
                 // Main Menu button
                 if (deadMenuRect(W, H).contains(mx, my)) { screen = Screen.WORLD_SELECT; repaint(); }
                 break;
+            case PAUSED:
+                // Resume button
+                if (pauseResumeRect(W, H).contains(mx, my)) { screen = Screen.PLAYING; repaint(); return; }
+                // Exit button
+                if (pauseExitRect(W, H).contains(mx, my)) { screen = Screen.LEVEL_SELECT; repaint(); return; }
+                break;
             case PLAYING:
+                break;
+            case WORLD_CLEARED:
+                screen = Screen.WORLD_SELECT; repaint();
                 break;
         }
     }
@@ -1101,6 +1113,8 @@ public class Main extends JPanel implements ActionListener {
     private Rectangle backRect(int W, int H)           { return new Rectangle(30, 25, 120, 46); }
     private Rectangle deadTryAgainRect(int W, int H)   { return new Rectangle(W/2-220, H/2+60, 180, 55); }
     private Rectangle deadMenuRect(int W, int H)       { return new Rectangle(W/2+40,  H/2+60, 180, 55); }
+    private Rectangle pauseResumeRect(int W, int H)    { return new Rectangle(W/2-220, H/2+40, 180, 55); }
+    private Rectangle pauseExitRect(int W, int H)      { return new Rectangle(W/2+40,  H/2+40, 180, 55); }
 
     private Rectangle worldCardRect(int idx, int W, int H) {
         int padX=30, padY=110, gap=18, total=W-padX*2-gap*3, cw=total/4, ch=H-padY-60;
@@ -1122,8 +1136,38 @@ public class Main extends JPanel implements ActionListener {
             case WORLD_SELECT: paintWorldSelect(g);  break;
             case LEVEL_SELECT: paintLevelSelect(g);  break;
             case PLAYING:      paintGame(g);         break;
+            case PAUSED:       paintGame(g); paintPauseOverlay(g); break;
             case DEAD:         paintGame(g); paintDeadOverlay(g); break;
+            case WORLD_CLEARED: paintGame(g); paintWorldClearedOverlay(g); break;
         }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    //  PAUSE OVERLAY
+    // ═════════════════════════════════════════════════════════════════════════
+    private void paintPauseOverlay(Graphics g) {
+        int W=getWidth(), H=getHeight();
+        Graphics2D g2=aa(g);
+
+        g2.setColor(new Color(0, 0, 0, 150));
+        g2.fillRect(0, 0, W, H);
+
+        int dW=460, dH=180, dX=(W-dW)/2, dY=(H-dH)/2;
+        g2.setColor(new Color(20, 25, 45, 230));
+        g2.fillRoundRect(dX, dY, dW, dH, 20, 20);
+        g2.setColor(new Color(100, 150, 255));
+        g2.setStroke(new BasicStroke(2.5f));
+        g2.drawRoundRect(dX, dY, dW, dH, 20, 20);
+
+        g2.setFont(new Font("Courier New", Font.BOLD, 40));
+        g2.setColor(Color.WHITE);
+        String msg="GAME PAUSED"; FontMetrics fm=g2.getFontMetrics();
+        g2.drawString(msg, dX+(dW-fm.stringWidth(msg))/2, dY+60);
+
+        Rectangle resR = pauseResumeRect(W, H);
+        Rectangle exitR = pauseExitRect(W, H);
+        paintGlowButton(g2, resR, "▶ RESUME", resR.contains(mouse), new Color(30, 80, 30), new Color(60, 160, 60));
+        paintGlowButton(g2, exitR, "✖ EXIT", exitR.contains(mouse), new Color(80, 30, 30), new Color(160, 60, 60));
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -1132,12 +1176,13 @@ public class Main extends JPanel implements ActionListener {
     private void paintSplash(Graphics g) {
         int W = getWidth(), H = getHeight();
         Graphics2D g2 = aa(g);
-        if (bgImages[0] != null) g2.drawImage(bgImages[0], 0, 0, W, H, this);
+        if (splashBg != null) g2.drawImage(splashBg, 0, 0, W, H, this);
+        else if (bgImages[0] != null) g2.drawImage(bgImages[0], 0, 0, W, H, this);
         else { g2.setColor(new Color(5,8,25)); g2.fillRect(0,0,W,H); }
         GradientPaint vig = new GradientPaint(W/2f,0,new Color(0,0,0,40),W/2f,H,new Color(0,0,0,200));
         g2.setPaint(vig); g2.fillRect(0,0,W,H);
 
-        String line1="PLATFORM", line2="QUEST";
+        String line1="SNOW", line2="BROS";
         g2.setFont(new Font("Courier New", Font.BOLD, W/10));
         FontMetrics fm = g2.getFontMetrics();
         g2.setColor(new Color(0,0,0,200));
@@ -1155,7 +1200,7 @@ public class Main extends JPanel implements ActionListener {
 
         g2.setFont(new Font("Courier New", Font.PLAIN, 16));
         g2.setColor(new Color(180,180,220,180));
-        String hint="ARROWS/WASD: Move   SPACE/W: Jump   Z/F: Shoot";
+        String hint="ARROWS/WASD: Move   UP/W: Jump   SPACE/TAB: Shoot";
         FontMetrics fh=g2.getFontMetrics();
         g2.drawString(hint,(W-fh.stringWidth(hint))/2,H/2+fm.getHeight()+40);
 
@@ -1187,8 +1232,8 @@ public class Main extends JPanel implements ActionListener {
         if (bg!=null) g2.drawImage(bg,r.x,r.y,r.width,r.height,null);
         else { g2.setColor(WORLD_TINT[idx]); g2.fillRect(r.x,r.y,r.width,r.height); }
         Color wt=WORLD_TINT[idx];
-        g2.setPaint(new GradientPaint(r.x,r.y,new Color(wt.getRed(),wt.getGreen(),wt.getBlue(),hov?80:130),
-            r.x,r.y+r.height,new Color(0,0,0,hov?180:220)));
+        g2.setPaint(new GradientPaint(r.x,r.y,new Color(wt.getRed(),wt.getGreen(),wt.getBlue(),hov?80:120),
+            r.x,r.y+r.height,new Color(wt.getRed()/3,wt.getGreen()/3,wt.getBlue()/3,hov?140:180)));
         g2.fillRect(r.x,r.y,r.width,r.height); g2.setClip(oldClip);
         g2.setStroke(new BasicStroke(hov?3f:1.5f));
         Color ac=WORLD_ACCENT[idx];
@@ -1215,8 +1260,8 @@ public class Main extends JPanel implements ActionListener {
         Graphics2D g2=aa(g);
         Image bg=bgImages[selectedWorld];
         if (bg!=null) g2.drawImage(bg,0,0,W,H,this);
-        else { g2.setColor(new Color(10,12,30)); g2.fillRect(0,0,W,H); }
-        g2.setColor(new Color(0,0,0,170)); g2.fillRect(0,0,W,H);
+        else { g2.setColor(new Color(20,25,50)); g2.fillRect(0,0,W,H); }
+        g2.setColor(new Color(0,0,0,110)); g2.fillRect(0,0,W,H);
         Rectangle back=backRect(W,H);
         paintGlowButton(g2,back,"◀ BACK",back.contains(mouse),new Color(50,50,70),new Color(90,90,120));
         Color accent=WORLD_ACCENT[selectedWorld];
@@ -1357,7 +1402,7 @@ public class Main extends JPanel implements ActionListener {
         // Controls hint (small, at bottom of HUD panel)
         g2.setFont(new Font("Courier New", Font.PLAIN, 11));
         g2.setColor(new Color(200, 200, 220, 180));
-        g2.drawString("P1: ARROWS+SPACE/Z   P2: A/D+W/F   ESC:Menu", 14, 94);
+        g2.drawString("P1: ARROWS+SPACE   P2: WASD+TAB   ESC:Menu", 14, 94);
 
         // World tag top-right
         g2.setColor(WORLD_ACCENT[worldIdx]);
@@ -1438,6 +1483,46 @@ public class Main extends JPanel implements ActionListener {
     }
 
     // ═════════════════════════════════════════════════════════════════════════
+    //  WORLD CLEARED OVERLAY
+    // ═════════════════════════════════════════════════════════════════════════
+    private void paintWorldClearedOverlay(Graphics g) {
+        int W=getWidth(), H=getHeight();
+        Graphics2D g2=aa(g);
+
+        // Semi-transparent dark film
+        g2.setColor(new Color(0, 0, 0, 170));
+        g2.fillRect(0, 0, W, H);
+
+        // Dialog box
+        int dW=550, dH=260, dX=(W-dW)/2, dY=(H-dH)/2;
+        g2.setColor(new Color(10, 35, 20, 235));
+        g2.fillRoundRect(dX, dY, dW, dH, 20, 20);
+        g2.setColor(new Color(60, 220, 100));
+        g2.setStroke(new BasicStroke(3f));
+        g2.drawRoundRect(dX, dY, dW, dH, 20, 20);
+
+        // Title
+        g2.setFont(new Font("Courier New", Font.BOLD, 42));
+        g2.setColor(Color.WHITE);
+        String msg="WORLD CLEARED!"; FontMetrics fm=g2.getFontMetrics();
+        g2.drawString(msg, dX+(dW-fm.stringWidth(msg))/2, dY+75);
+
+        // World Name
+        g2.setFont(new Font("Courier New", Font.BOLD, 52));
+        g2.setColor(new Color(100, 255, 160));
+        String wname = WORLD_NAMES[worldOfLevel(currentLevel)];
+        fm=g2.getFontMetrics();
+        g2.drawString(wname, dX+(dW-fm.stringWidth(wname))/2, dY+155);
+
+        // Continue Hint
+        g2.setFont(new Font("Courier New", Font.PLAIN, 18));
+        g2.setColor(new Color(200, 200, 200));
+        String sub="Click anywhere to return to Menu";
+        fm=g2.getFontMetrics();
+        g2.drawString(sub, dX+(dW-fm.stringWidth(sub))/2, dY+220);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
     //  UTILITIES
     // ═════════════════════════════════════════════════════════════════════════
     private Graphics2D aa(Graphics g) {
@@ -1468,7 +1553,7 @@ public class Main extends JPanel implements ActionListener {
     // ═════════════════════════════════════════════════════════════════════════
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            JFrame frame=new JFrame("Platform Quest");
+            JFrame frame=new JFrame("Snow Bros");
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             Main panel=new Main();
             frame.add(panel);
