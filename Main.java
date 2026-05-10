@@ -521,7 +521,7 @@ public class Main extends JPanel implements ActionListener {
     private void spawnEnemies() {
         enemies.clear();
         int sh = getHeight(), sw = getWidth();
-        double speed = 1.5 + (currentLevel - 1) * 0.2; // slightly faster each level
+        double speed = 1.5 + (currentLevel - 1) * 0.1; // reduced speed scaling (halved)
         // Volcano enemies were feeling too fast; slightly reduce patrol speed there.
         if (worldOfLevel(currentLevel) == 3) speed *= 0.88;
 
@@ -532,7 +532,7 @@ public class Main extends JPanel implements ActionListener {
         final double enemyYOffset = 5.0;
 
         for (int i = 0; i < count; i++) {
-            double ex = spawns[i][0] - 150;
+            double ex = spawns[i][0] - 34; // Center enemy (width 68) on spawn X
             double ey = spawns[i][1] - enemyYOffset;
             Enemy.Type etype = types[i];
 
@@ -933,11 +933,13 @@ public class Main extends JPanel implements ActionListener {
                         enemies.add(new Enemy(mX, mY, lb, rb, 1.6, H, miniType));
                     }
                 } else {
-                    // Other bosses keep existing timing behavior.
-                    bossJumpTimer++;
-                    if (bossJumpTimer >= BOSS_JUMP_INTERVAL) {
-                        bossJumpTimer = 0;
-                        doBossJump(boss);
+                    // Other bosses jump behavior
+                    if (currentLevel != 18 && currentLevel != 19) {
+                        bossJumpTimer++;
+                        if (bossJumpTimer >= BOSS_JUMP_INTERVAL) {
+                            bossJumpTimer = 0;
+                            doBossJump(boss);
+                        }
                     }
 
                     bossMiniSpawnTimer++;
@@ -1017,7 +1019,7 @@ public class Main extends JPanel implements ActionListener {
             for (Box.Projectile pr : box.projectiles) {
                 if (pr.active && pr.getBounds().intersects(en.getBounds())) {
                     pr.active = false;      // ice-ball disappears on hit
-                    en.takeDamage(1);       // reduce enemy HP by 1
+                    en.takeDamage(2);       // reduce enemy HP (2x power)
                     if (!en.alive) score += isBossLevel(currentLevel) ? 10 : 1;
                     break;
                 }
@@ -1026,7 +1028,7 @@ public class Main extends JPanel implements ActionListener {
             for (Box.Projectile pr : box2.projectiles) {
                 if (pr.active && pr.getBounds().intersects(en.getBounds())) {
                     pr.active = false;
-                    en.takeDamage(1);
+                    en.takeDamage(2);       // reduce enemy HP (2x power)
                     if (!en.alive) score += isBossLevel(currentLevel) ? 10 : 1;
                     break;
                 }
