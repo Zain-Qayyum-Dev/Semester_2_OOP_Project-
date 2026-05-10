@@ -61,8 +61,13 @@ public class Enemy {
         this.type        = type;
 
         boolean isBoss = isBossType(type);
-        width  = isBoss ? 346  : 68;
-        height = isBoss ? 346  : 68;
+        if (type == Type.BOSS_DESERT || type == Type.BOSS_FOREST) {
+            width = 200;
+            height = 200;
+        } else {
+            width  = isBoss ? 346  : 68;
+            height = isBoss ? 346  : 68;
+        }
         hp     = isBoss ? BOSS_HP : BASE_HP;
 
         // Stagger shoot timers
@@ -230,8 +235,8 @@ public class Enemy {
     }
 
     public Point getVolcanoBossMouthOrigin() {
-        int mx = (int)(x + (movingRight ? width * 0.70 : width * 0.30));
-        int my = (int)(y + height * 0.57);
+        int mx = (int)(x + width / 2.0);
+        int my = (int)(y + 140); // Lowered to player height
         return new Point(mx, my);
     }
 
@@ -244,14 +249,37 @@ public class Enemy {
                                             screenHeight, projectileColor()));
     }
 
-    // Boss: fire in 4 directions (left, right, up-left, up-right)
+    // Boss: fire in multiple directions
     private void fireBossProjectiles() {
         int cx = (int)(x + width / 2);
-        int cy = (int)(y + height / 2);
+        // Lower firing origin to roughly player mid-section (approx 40px above base)
+        int cy = (int)(y + 40); 
         Color c = projectileColor();
         double spd = 5;
-        // left, right, diagonal up-left, diagonal up-right
-        double[][] dirs = { {-spd, 0}, {spd, 0}, {-spd*0.7, spd*0.7}, {spd*0.7, spd*0.7} };
+
+        double[][] dirs;
+        if (type == Type.BOSS_DESERT) {
+            // 6 directions (Upper hemisphere: from 0 to PI)
+            dirs = new double[6][2];
+            for (int i = 0; i < 6; i++) {
+                // i=0 -> 0 (right), i=5 -> PI (left)
+                double angle = i * (Math.PI / 5.0);
+                dirs[i][0] = Math.cos(angle) * spd;
+                dirs[i][1] = Math.sin(angle) * spd;
+            }
+        } else if (type == Type.BOSS_FOREST) {
+            // 8 directions (Upper hemisphere: from 0 to PI)
+            dirs = new double[8][2];
+            for (int i = 0; i < 8; i++) {
+                double angle = i * (Math.PI / 7.0);
+                dirs[i][0] = Math.cos(angle) * spd;
+                dirs[i][1] = Math.sin(angle) * spd;
+            }
+        } else {
+            // Default 4 directions for other bosses (left, right, diagonal up-left, diagonal up-right)
+            dirs = new double[][] { {-spd, 0}, {spd, 0}, {-spd*0.7, spd*0.7}, {spd*0.7, spd*0.7} };
+        }
+
         for (double[] d : dirs) {
             projectiles.add(new EnemyProjectile(cx, cy, d[0], d[1], screenHeight, c));
         }
