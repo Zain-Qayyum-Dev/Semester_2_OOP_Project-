@@ -139,11 +139,17 @@ public class LevelLayouts {
                 {sx - 730 + 235, 390 + 30, sx - 730, sx - 260}             // Floor 3 Bridge right moving (Enemy 2)
             };
             case 16: return new double[][]{
+                {sx / 4, 30, 0, sx / 2},                                   // Ground Left (Enemy 2)
+                {sx / 2 + sx / 4, 30, sx / 2, sx},                         // Ground Right (Enemy 2)
+                {100 + 182, 270 + 30, 100, 465},                           // Floor 2 Left step (Enemy 3)
+                {sx - 465 + 182, 270 + 30, sx - 465, sx - 100},            // Floor 2 Right step (Enemy 3)
+                {sx / 2 - 142, 400 + 30, sx / 2 - 335, sx / 2 + 50},       // Floor 3 Bridge Left (Enemy 4)
+                {sx / 2 + 242, 400 + 30, sx / 2 + 50, sx / 2 + 435},       // Floor 3 Bridge Right (Enemy 4)
                 {100 + 182, 560 + 30, 100, 465},                           // Floor 4 Left step (Enemy 1)
                 {sx - 465 + 182, 560 + 30, sx - 465, sx - 100}             // Floor 4 Right step (Enemy 1)
             };
-            case 18: return new double[][]{ {sx/2, 40, 0, sx} };           // Desert Boss on Ground
-            case 19: return new double[][]{ {sx/2, 90, 0, sx} };           // Forest Boss on Ground
+            case 18: return new double[][]{ {sx/2, 40, sx/4 + 100, sx/4 + 100 + 650} };   // Desert Boss restricted to ground platform
+            case 19: return new double[][]{ {sx/2, 90, 200, sx - 200} };                 // Forest Boss restricted between 1st floor wing boundaries
             default: return new double[][]{{sx*0.50, 200}};
         }
     }
@@ -470,11 +476,9 @@ public class LevelLayouts {
                 case 16:
                     // Ground Floor  Enemy_2_Volcano , Enemy_2_Volcano
                     // FLOOR 1 (Lowest)
-                    platforms.add(new Platform(0, 0, 50, 170));                                 // Left wall
-                    platforms.add(new Platform(170, 100, 315, 30));                             // Left step
+                    platforms.add(new Platform(170, 130, 315, 30));                             // Left step
                     platforms.add(new Platform((int)(sw / 2 - 125), 0, 250, 140));              // Center large block
-                    platforms.add(new Platform((int)(sw - 485), 100, 315, 30));                // Right step
-                    platforms.add(new Platform((int)(sw - 50), 0, 50, 170));                   // Right wall
+                    platforms.add(new Platform((int)(sw - 485), 130, 315, 30));                // Right step
                     // FLOOR 2 (+170 gap)
                     platforms.add(new Platform(100, 270, 365, 30));                             // Left step Enemy_3_Volcano
                     platforms.add(new Platform((int)(sw - 465), 270, 365, 30));                // Right step Enemy_3_Volcano
