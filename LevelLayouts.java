@@ -15,15 +15,22 @@ public class LevelLayouts {
                 {280 + 175, 400, 280, 280 + 350},                          // Floor 3 Left (Enemy 4)
                 {sx - 600 + 175, 400, sx - 600, sx - 600 + 350}            // Floor 3 Right (Enemy 4)
             };
-            case 2:  return new double[][]{{sx*0.50,120+30},{sx*0.10,250+30},{sx*0.90,250+30},{sx*0.30,400+30},{sx*0.70,400+30}};
+            case 2:  return new double[][]{
+                {sx / 4, 30, 0, sx / 2},                                   // Ground Left (Enemy 4)
+                {sx / 2 + sx / 4, 30, sx / 2, sx},                         // Ground Right (Enemy 4)
+                {sx - 1000 + 225, 100, sx - 1000, sx - 1000 + 450},        // F1 Mid (Enemy 1)
+                {330 + 190, 250, 330, 330 + 380},                          // F2 Left (Enemy 3)
+                {sx - 700 + 165, 250, sx - 700, sx - 700 + 330},           // F2 Right (Enemy 3)
+                {sx - 1000 + 225, 400, sx - 1000, sx - 1000 + 450}         // F3 Top (Enemy 1)
+            };
             case 3:  return new double[][]{
                 {sx / 4, 30, 0, sx / 2},                                   // Ground Left (Enemy 4)
                 {sx / 2 + sx / 4, 30, sx / 2, sx},                         // Ground Right (Enemy 4)
-                {180 + 175, 100, 180, 180 + 350},                          // Floor 1 Left (Enemy 1)
-                {sx - 530 + 175, 100, sx - 530, sx - 530 + 350},           // Floor 1 Right (Enemy 3)
-                {sx - 1020 + 250, 270, sx - 1020, sx - 1020 + 500},        // Floor 2 Mid (Enemy 2)
-                {320 + 115, 500, 320, 320 + 230},                          // Floor 4 Left (Enemy 3)
-                {sx - 520 + 115, 500, sx - 520, sx - 520 + 230}            // Floor 4 Right (Enemy 1)
+                {180 + 175, 140 + 30, 180, 180 + 350},                     // Floor 1 Left (Enemy 1)
+                {sx - 530 + 175, 140 + 30, sx - 530, sx - 530 + 350},      // Floor 1 Right (Enemy 3)
+                {sx - 1020 + 250, 270 + 30, sx - 1020, sx - 1020 + 500},   // Floor 2 Mid (Enemy 2)
+                {320 + 115, 500 + 30, 320, 320 + 230},                     // Floor 4 Left (Enemy 3)
+                {sx - 520 + 115, 500 + 30, sx - 520, sx - 520 + 230}       // Floor 4 Right (Enemy 1)
             };
             case 4:  return new double[][]{
                 {sx / 6, 30, 0, sx / 3},                                   // Ground Left (Enemy 1)
@@ -79,14 +86,14 @@ public class LevelLayouts {
                 {sx - 530 + 190, 510 + 30, sx - 530, sx - 530 + 380}       // Floor 4 Right (Enemy 4) - T top
             };
             case 10: return new double[][]{
-                {115, 30, 0, 230},                                                         // Ground Left (Enemy 1) - outer gap
-                {sx - 65, 30, sx - 130, sx},                                               // Ground Right (Enemy 1) - outer gap
-                {90 + 147, 180 + 30, 90, 385},                                             // Lower Left Wing (Enemy 4) - stop at block/circle
-                {sx - 385 + 147, 180 + 30, sx - 385, sx - 90},                             // Lower Right Wing (Enemy 4) - stop at block/circle
-                {470 + 290, 320 + 30, 470, 470 + 580},                                     // Lower Center (Enemy 1)
-                {90 + 147, 470 + 30, 90, 385},                                             // Upper Left Wing (Enemy 3) - stop at block/circle
-                {sx - 385 + 147, 470 + 30, sx - 385, sx - 90},                             // Upper Right Wing (Enemy 3) - stop at block/circle
-                {470 + 305, 600 + 30, 470, 470 + 610}                                      // Top Center (Enemy 2)
+                {115, 30, 10, sw / 2 - 10 },                                                        // Ground Left (Gap 1: 0-230)
+                {sx - 65, 30, sx /2 + 10 , sx - 10},                                          // Ground Right (Gap 3: sx-130 to sx)
+                {237, 180 + 30, 95, 380},                                                  // Lower Left Wing (Stay between block and circle)
+                {sx - 237, 180 + 30, sx - 380, sx - 95},                                   // Lower Right Wing (Stay between circle and block)
+                {470 + 290, 320 + 30, 475, 1045},                                          // Lower Center [470, 1050]
+                {237, 470 + 30, 95, 380},                                                  // Upper Left Wing (Stay between block and circle)
+                {sx - 237, 470 + 30, sx - 380, sx - 95},                                   // Upper Right Wing (Stay between circle and block)
+                {470 + 305, 600 + 30, 475, 1075}                                           // Top Center [470, 1080]
             };
             case 11: return new double[][]{
                 {sx / 4, 30, 0, sx / 2},                                   // Ground Left (Enemy 4)
@@ -132,15 +139,11 @@ public class LevelLayouts {
                 {sx - 730 + 235, 390 + 30, sx - 730, sx - 260}             // Floor 3 Bridge right moving (Enemy 2)
             };
             case 16: return new double[][]{
-                {(50 + (sx / 2 - 125)) / 2, 30, 50, sx / 2 - 125},         // Ground Left (Enemy 2) - avoid side wall/center block
-                {((sx / 2 + 125) + (sx - 50)) / 2, 30, sx / 2 + 125, sx - 50}, // Ground Right (Enemy 2) - avoid center block/side wall
-                {100 + 182, 270 + 30, 100, 465},                           // Floor 2 Left step (Enemy 3)
-                {sx - 465 + 182, 270 + 30, sx - 465, sx - 100},            // Floor 2 Right step (Enemy 3)
-                {sx / 2 - 143, 400 + 30, sx / 2 - 335, sx / 2 + 50},       // Floor 3 Bridge Left half (Enemy 4)
-                {sx / 2 + 243, 400 + 30, sx / 2 + 50, sx / 2 + 435},       // Floor 3 Bridge Right half (Enemy 4)
                 {100 + 182, 560 + 30, 100, 465},                           // Floor 4 Left step (Enemy 1)
                 {sx - 465 + 182, 560 + 30, sx - 465, sx - 100}             // Floor 4 Right step (Enemy 1)
             };
+            case 18: return new double[][]{ {sx/2, 40, 0, sx} };           // Desert Boss on Ground
+            case 19: return new double[][]{ {sx/2, 90, 0, sx} };           // Forest Boss on Ground
             default: return new double[][]{{sx*0.50, 200}};
         }
     }
@@ -534,7 +537,6 @@ public class LevelLayouts {
 
             // FLOOR 2 (Lower Tier)
             platforms.add(new Platform(0, 200, 200, 30));                               // Far left
-            //platforms.add(new Platform((int)(sx/2 - 90), 200, 180, 30));                 // Center
             platforms.add(new Platform((int)(sx - 200), 200, 200, 30));                  // Far right
 
             // FLOOR 3 (Middle Tier)
@@ -546,22 +548,24 @@ public class LevelLayouts {
             platforms.add(new Platform((int)(sx/2 - 210), 600, 400, 30));                // Top center (under red circle)
             platforms.add(new Platform((int)(sx - 440), 500, 190, 30));                   // Top right
 
+                break;
+
             case 20:
 
                 // FLOOR 1 (Lowest)
-                platforms.add(new Platform(sw - 630 , 100, 630, 25));                              // Bottom staggered platform
+                platforms.add(new Platform(660, 100, 630, 25));                               // Bottom staggered platform
 
                 // FLOOR 2 (Lower Middle)
-                platforms.add(new Platform(760, 260, 630, 25));                              // Anchored further right
+                platforms.add(new Platform(sw - 730 , 260, 630, 25));                         // Anchored further right
 
                 // FLOOR 3 (Middle)
                 platforms.add(new Platform((int)(0), 325, 350, 70));                  // Isolated thick platform on right
 
                 // FLOOR 4 (Upper Middle)
-                platforms.add(new Platform(sw - 630 , 420, 630, 25));                              // Middle staggered platform
+                platforms.add(new Platform(660, 420, 630, 25));                              // Top anchored right
 
                 // FLOOR 5 (Highest)
-                platforms.add(new Platform(760, 580, 630, 25));                              // Top anchored right
+                platforms.add(new Platform(sw - 630 , 580, 630, 25));                              // Middle staggered platform
 
                 break;
 
